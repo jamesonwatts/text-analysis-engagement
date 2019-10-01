@@ -1,0 +1,56 @@
+---
+title: "Engagement Analysis"
+output:
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(tidytext)
+engagement <- read_rds("engagement.rds") %>% 
+  filter(year < 2019) %>% 
+  mutate(year=as.numeric(year)) %>% 
+  drop_na()
+```
+
+
+## Run a topic model
+```{r}
+library(topicmodels)
+
+dtm_text <- engagement %>% 
+  count(document, term) %>% 
+  cast_dtm(document, term, n)
+
+lda_out <- dtm_text %>% 
+  LDA(
+    k = 10, 
+    method = "Gibbs",
+    control = list(seed = 42)
+  )
+```
+
+## Visualize probabilities
+```{r}
+
+# Topic Word Probabilities
+lda_topics <- lda_out %>% 
+  tidy(matrix = "beta")
+
+#lda_topics
+
+# Visualize, Name, and Choose K
+lda_topics %>%
+  group_by(topic) %>% 
+  top_n(10, beta) %>% 
+  ungroup() %>%
+  mutate(term = reorder(term, beta)) %>%
+  ggplot(aes(term, beta, fill = as.factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free") +
+  coord_flip()
+
+```
+
+

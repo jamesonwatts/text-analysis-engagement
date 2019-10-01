@@ -1,0 +1,201 @@
+---
+title: "Engagement Frequencies"
+output:
+  html_document: 
+    fig_width: 10.5
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse)
+library(tidytext)
+library(tidylo)
+engagement <- read_rds("engagement.rds") 
+```
+
+## Look at the top words across all articles and years
+```{r}
+engagement %>%
+  group_by(term) %>% 
+  summarise(word_count = sum(count)) %>% 
+  top_n(25, word_count) %>% 
+  mutate(term = reorder(term, word_count)) %>% 
+  ggplot(aes(term, word_count)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+```
+
+## Top 10 words by count in each time period
+```{r}
+engagement %>% 
+  group_by(time_period, term) %>%
+  summarise(word_count=sum(count)) %>% 
+  top_n(10, word_count) %>%
+  ungroup %>%
+  ggplot(aes(reorder_within(term, word_count, time_period), word_count, fill = time_period)) +
+    geom_col(show.legend = FALSE) +
+    scale_x_reordered() +
+    facet_wrap(~time_period, scales = "free") +
+    coord_flip()+
+    labs(x = NULL, y="Word Counts")
+```
+
+## Top words by discipline
+
+```{r}
+engagement %>% 
+  filter(time_period=="< 2005") %>% 
+  group_by(research_field, term) %>%
+  summarise(word_count=sum(count)) %>% 
+  top_n(10, word_count) %>%
+  ungroup %>%
+  ggplot(aes(reorder_within(term, word_count, research_field), word_count, fill = research_field)) +
+    geom_col(show.legend = FALSE) +
+    scale_x_reordered() +
+    facet_wrap(~research_field, scales = "free") +
+    coord_flip()+
+    labs(x = NULL, y="Word Counts", title = "< 2005")
+
+engagement %>% 
+  filter(time_period=="2005-2009") %>% 
+  group_by(research_field, term) %>%
+  summarise(word_count=sum(count)) %>% 
+  top_n(10, word_count) %>%
+  ungroup %>%
+  ggplot(aes(reorder_within(term, word_count, research_field), word_count, fill = research_field)) +
+    geom_col(show.legend = FALSE) +
+    scale_x_reordered() +
+    facet_wrap(~research_field, scales = "free") +
+    coord_flip()+
+    labs(x = NULL, y="Word Counts", title = "2005-2009")
+
+engagement %>% 
+  filter(time_period=="2010-2014") %>% 
+  group_by(research_field, term) %>%
+  summarise(word_count=sum(count)) %>% 
+  top_n(10, word_count) %>%
+  ungroup %>%
+  ggplot(aes(reorder_within(term, word_count, research_field), word_count, fill = research_field)) +
+    geom_col(show.legend = FALSE) +
+    scale_x_reordered() +
+    facet_wrap(~research_field, scales = "free") +
+    coord_flip()+
+    labs(x = NULL, y="Word Counts", title = "2010-2014")
+
+engagement %>% 
+  filter(time_period=="2015 <") %>% 
+  group_by(research_field, term) %>%
+  summarise(word_count=sum(count)) %>% 
+  top_n(10, word_count) %>%
+  ungroup %>%
+  ggplot(aes(reorder_within(term, word_count, research_field), word_count, fill = research_field)) +
+    geom_col(show.legend = FALSE) +
+    scale_x_reordered() +
+    facet_wrap(~research_field, scales = "free") +
+    coord_flip()+
+    labs(x = NULL, y="Word Counts", title = "2015 <")
+```
+
+
+## Number of articles and the term 'egag' by year
+```{r}
+engagement %>% 
+  filter(term=="engag") %>% 
+  group_by(year) %>%
+  summarize(
+    document_count = n_distinct(document),
+    engag_term_count = sum(count)
+      ) %>%
+  gather(key = "type", value = "count",2:3) %>%
+  ggplot(aes(year,count)) +
+    geom_line()+
+    facet_wrap(~ type, scales = "free")
+
+```
+
+## Growth of importance in the term 'engag' over time conditioned by amount of text each year
+Using the weighted log odds binding as proposed by [Julia Silge in the tidylo package](https://juliasilge.com/blog/introducing-tidylo/)
+
+```{r, message=FALSE}
+engagement %>%
+  filter(year > 1995) %>% 
+  bind_log_odds(document, term, count) %>% 
+  filter(term=='engag') %>% 
+  group_by(year) %>% 
+  summarise(log_odds=mean(log_odds)) %>% 
+  ggplot(aes(year,log_odds)) +
+    geom_point(shape=1, alpha=0.5)+
+    geom_smooth(method = lm)+
+    labs(y = "Log odds ratio, weighted by uninformative Dirichlet prior",
+         x = "Year")
+```
+
+## Use of the term engagement in each discipline over the years
+```{r}
+engagement %>% 
+  filter(term=="engag") %>% 
+  group_by(research_field,year) %>%
+  summarize(
+    document_count = n_distinct(document),
+    engag_term_count = sum(count)
+    ) %>%
+  ungroup %>% 
+  ggplot(aes(year,engag_term_count, color=research_field)) +
+    geom_line()
+
+```
+
+## Log odds of the term engag in Marketing and Management
+
+```{r, message=FALSE}
+engagement %>%
+  filter(year > 1995) %>% 
+  filter(research_field=="Management" | research_field=="Marketing") %>% 
+  bind_log_odds(document, term, count) %>% 
+  filter(term=='engag') %>% 
+  group_by(research_field, year) %>% 
+  summarise(log_odds=mean(log_odds)) %>% 
+  ggplot(aes(year,log_odds, color=research_field)) +
+    geom_point()+
+    labs(y = "Log odds ratio, weighted by uninformative Dirichlet prior",
+         x = "Year")
+```
+
+
+## Top 10 Journals using the term "engagement"
+
+```{r}
+engagement %>% 
+  filter(term=="engag") %>% 
+  group_by(periodical_short) %>% 
+  summarize(term_count=sum(count)) %>%
+  top_n(10,term_count) %>% 
+  ggplot(aes(reorder(periodical_short,+term_count),term_count)) +
+    geom_col(show.legend = FALSE) +
+    labs(x = NULL, y = "Count of term 'engag'") +
+    coord_flip() 
+```
+
+## Top 10 journals in each period
+```{r}
+engagement %>% 
+  filter(term=="engag") %>% 
+  group_by(time_period, periodical_short) %>% 
+  summarize(word_count=sum(count)) %>%
+  top_n(10,word_count) %>% 
+  ungroup %>%
+  ggplot(aes(reorder_within(periodical_short, word_count, time_period), word_count, fill = time_period)) +
+    geom_col(show.legend = FALSE) +
+    scale_x_reordered() +
+    facet_wrap(~time_period, scales = "free") +
+    coord_flip()+
+    labs(x = NULL, y="Word Counts")+
+    theme(axis.text.y = element_text(angle = 45))
+```
+
+
+## Terms used by most prolific authors in database? 
+
+
+
