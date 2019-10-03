@@ -10,6 +10,7 @@ knitr::opts_chunk$set(echo = FALSE)
 library(tidyverse)
 library(tidytext)
 library(tidylo)
+library(wordcloud)
 engagement <- read_rds("engagement.rds") 
 ```
 
@@ -24,6 +25,12 @@ engagement %>%
   geom_col() +
   xlab(NULL) +
   coord_flip()
+
+engagement %>% 
+  group_by(term) %>% 
+  summarise(word_count = sum(count)) %>% 
+  with(wordcloud(term, word_count, random.order = FALSE, max.words = 50))
+
 ```
 
 ## Top 10 words by count in each time period
@@ -190,12 +197,80 @@ engagement %>%
     scale_x_reordered() +
     facet_wrap(~time_period, scales = "free") +
     coord_flip()+
-    labs(x = NULL, y="Word Counts")+
-    theme(axis.text.y = element_text(angle = 45))
+    labs(x = NULL, y=NULL)+
+    theme(
+      axis.text.y = element_text(angle = 40),
+      plot.margin = unit(c(5.5, 5.5, 50, 5.5), "points")
+    )
 ```
 
 
-## Terms used by most prolific authors in database? 
+## Authors that use the term 'engag' the most
 
+```{r, warning=FALSE}
+engagement %>% 
+  filter(term=="engag") %>%
+  separate(author, c("author_1","author_2","author_3","author_4","author_5","author_6"),sep = ";") %>% 
+  gather(key = "author_num", value = "author",6:11, na.rm = TRUE) %>%
+  mutate(author = str_trim(author)) %>% 
+  group_by(author) %>% 
+  summarise(term_count=sum(count)) %>% 
+  top_n(10,term_count) %>% 
+  ungroup %>% 
+  ggplot(aes(reorder(author,+term_count),term_count)) +
+    geom_col(show.legend = FALSE) +
+    labs(x = NULL, y = "Count of term 'engag'") +
+    coord_flip() 
+```
+
+## Authors that use the term 'engag' the most by time period
+
+```{r, warning=FALSE}
+engagement %>% 
+  filter(term=="engag") %>%
+  separate(author, c("author_1","author_2","author_3","author_4","author_5","author_6"),sep = ";") %>% 
+  gather(key = "author_num", value = "author",6:11, na.rm = TRUE) %>%
+  mutate(author = str_trim(author)) %>% 
+  group_by(time_period, author) %>% 
+  summarise(term_count=sum(count)) %>% 
+  top_n(10,term_count) %>% 
+  ungroup %>% 
+  ggplot(aes(reorder_within(author, term_count, time_period), term_count, fill = time_period)) +
+    geom_col(show.legend = FALSE) +
+    scale_x_reordered() +
+    facet_wrap(~time_period, scales = "free") +
+    coord_flip()+
+    labs(x = NULL, y=NULL)
+  
+```
+
+## Top Keywords by discipline
+```{r, warning=FALSE}
+keywords <- engagement %>% 
+  group_by(document) %>% 
+  summarise(
+    keywords=first(keywords),
+    time_period=first(time_period),
+    research_field=first(research_field)
+  ) %>% 
+  separate(keywords, c("k_1","k_2","k_3","k_4","k_5","k_6"),sep = ";") %>% 
+  gather(key = "keyword_num", value = "keyword",2:7, na.rm = TRUE) %>%
+  mutate(keyword = str_trim(keyword))
+
+keywords %>% 
+  group_by(research_field, keyword) %>%
+  summarise(word_count=n()) %>% 
+  top_n(5, word_count) %>%
+  ungroup %>%
+  ggplot(aes(reorder_within(keyword, word_count, research_field), word_count, fill = research_field)) +
+    geom_col(show.legend = FALSE) +
+    scale_x_reordered() +
+    facet_wrap(~research_field, scales = "free") +
+    coord_flip()+
+    labs(x = NULL, y="Word Counts")
+
+
+
+```
 
 
