@@ -1,0 +1,137 @@
+---
+title: "Corpus-Surprise"
+author: "Jameson Watts, Ph.D."
+date: "10/7/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse)
+library(tidytext)
+library(LaplacesDemon)
+engagement <- read_rds("engagement.rds") 
+```
+
+## Graph the surprise (KLD divergence) of each year as compared to the previous year.
+
+```{r}
+
+den <- engagement %>% 
+  filter(year > 1995) %>% 
+  group_by(year, term) %>% 
+  summarise(count=sum(count)) 
+
+#find the percent of each term in a given year and then drop terms that don't exist across years
+den <- den %>% 
+  group_by(year) %>% 
+  summarise(total=sum(count)) %>% 
+  left_join(den) %>% 
+  mutate(part = count/total) %>% 
+  pivot_wider(id_cols=c(term),names_from = year,values_from = part) %>% 
+  drop_na()
+
+surprise <- as_tibble(data.frame(year=double(),kld=double()))
+
+for(i in 3:length(names(den))){
+  surprise <- surprise %>% 
+    add_row(year=as.numeric(names(den)[i]), kld=KLD(den[[i-1]],den[[i]])$sum.KLD.py.px)
+} 
+
+surprise %>% 
+  ggplot(aes(year,kld))+
+    geom_line()
+
+```
+
+## Graph the surprise (KLD divergence) of each year as compared to the previous 3 years.
+
+```{r}
+library(tibbletime)
+rolling_mean <- rollify(mean, window = 3)
+roll_den <- den %>%
+  pivot_longer(-term, names_to = "year", values_to = "part") %>%
+  group_by(term) %>% 
+  mutate(mean3 = rolling_mean(part)) %>% 
+  pivot_wider(id_cols=c(term),names_from = year,values_from = mean3)  
+
+surprise <- as_tibble(data.frame(year=double(),kld=double()))
+
+for(i in 5:length(names(den))){
+  surprise <- surprise %>% 
+    add_row(year=as.numeric(names(den)[i]), kld=KLD(roll_den[[i-1]],den[[i]])$sum.KLD.py.px)
+} 
+
+surprise %>% 
+  ggplot(aes(year,kld))+
+    geom_line()
+
+
+```
+
+## Rad... looks like 2004 generated substantial surprise. Let's try to isolate the words producing this surprise.
+
+```{r}
+delta_den <- roll_den %>% 
+  pivot_longer(-term,names_to = "year", values_to = "mean3") %>% 
+  mutate(year = as.numeric(year)) %>% 
+  mutate(year = year+1) %>%  # so that join on year means last year's average
+  left_join(
+    den %>% 
+      pivot_longer(-term, names_to="year", values_to = "part") %>% 
+      mutate(year = as.numeric(year))
+  ) %>% 
+  mutate(deviation = (part-mean3)*100) %>% 
+  mutate(abs_deviation=abs(deviation)) %>% 
+  arrange(desc(abs_deviation)) 
+
+delta_den <- as_tibble(delta_den) 
+delta_den %>%
+  filter(year==2004) %>% 
+  top_n(25, abs_deviation) %>% 
+  mutate(term = reorder(term, abs_deviation)) %>% 
+  ggplot(aes(x = term, y = deviation, fill=deviation)) + 
+    geom_bar(stat = 'identity') + 
+    scale_fill_gradient2(low='red', mid='snow3', high='darkgreen', space='Lab')+
+    coord_flip()
+```
+
+## Let's look at positive and negative changes independently
+```{r}
+delta_den %>%
+  filter(year==2004) %>% 
+  top_n(25, deviation) %>% 
+  mutate(term = reorder(term, deviation)) %>% 
+  ggplot(aes(x = term, y = deviation, fill=deviation)) + 
+    geom_bar(stat = 'identity') + 
+    scale_fill_gradient2(low='red', mid='snow3', high='darkgreen', space='Lab')+
+    coord_flip()
+
+delta_den %>%
+  filter(year==2004) %>% 
+  top_n(25, -deviation) %>% 
+  mutate(term = reorder(term, -deviation)) %>% 
+  ggplot(aes(x = term, y = deviation, fill=deviation)) + 
+    geom_bar(stat = 'identity') + 
+    scale_fill_gradient2(low='red', mid='snow3', high='darkgreen', space='Lab')+
+    coord_flip()
+```
+
+
+
+## Now let's isolate the documents that use the growth terms the most in 2004 (note there are only 5 articles in 2004)
+
+```{r}
+top_gainers <- delta_den %>%
+  filter(year==2004) %>% 
+  top_n(25, deviation)
+
+engagement %>% 
+  filter(year == 2004) %>%
+  filter(term %in% top_gainers$term) %>%  
+  group_by(title) %>%
+  summarise(count=sum(count), periodical_short=first(periodical_short), research_field=first(research_field))
+  
+
+```
+

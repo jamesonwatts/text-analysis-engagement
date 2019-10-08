@@ -138,6 +138,17 @@ engagement %>%
          x = "Year")
 ```
 
+## Number of articles by discipline
+
+```{r}
+engagement %>% 
+  filter(year>1995) %>% 
+  group_by(research_field,year_derived) %>% 
+  summarise(count=n_distinct(document)) %>% 
+  ggplot(aes(as.numeric(year_derived), count, color=research_field)) +
+    geom_line()
+```
+
 ## Use of the term engagement in each discipline over the years
 ```{r}
 engagement %>% 
