@@ -17,7 +17,8 @@ engagement <- read_rds("engagement.rds")
 
 ```{r}
 
-den <- engagement %>% 
+den <- engagement %>%
+  #filter(research_field=="Marketing") %>% 
   filter(year > 1995) %>% 
   group_by(year, term) %>% 
   summarise(count=sum(count)) 

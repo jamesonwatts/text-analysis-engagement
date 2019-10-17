@@ -12,6 +12,8 @@ library(tidytext)
 library(tidylo)
 library(wordcloud)
 engagement <- read_rds("engagement.rds") 
+periods <- c("< 2005","2005-2009","2010-2014","2015 <")
+disciplines <- c("Marketing","Management","Tourism","Public")
 ```
 
 ## Look at the top words across all articles and years
@@ -51,57 +53,20 @@ engagement %>%
 ## Top words by discipline
 
 ```{r, fig.height=6}
-engagement %>% 
-  filter(time_period=="< 2005") %>% 
-  group_by(research_field, term) %>%
-  summarise(word_count=sum(count)) %>% 
-  top_n(20, word_count) %>%
-  ungroup %>%
-  ggplot(aes(reorder_within(term, word_count, research_field), word_count, fill = research_field)) +
-    geom_col(show.legend = FALSE) +
-    scale_x_reordered() +
-    facet_wrap(~research_field, scales = "free") +
-    coord_flip()+
-    labs(x = NULL, y="Word Counts", title = "< 2005")
-
-engagement %>% 
-  filter(time_period=="2005-2009") %>% 
-  group_by(research_field, term) %>%
-  summarise(word_count=sum(count)) %>% 
-  top_n(20, word_count) %>%
-  ungroup %>%
-  ggplot(aes(reorder_within(term, word_count, research_field), word_count, fill = research_field)) +
-    geom_col(show.legend = FALSE) +
-    scale_x_reordered() +
-    facet_wrap(~research_field, scales = "free") +
-    coord_flip()+
-    labs(x = NULL, y="Word Counts", title = "2005-2009")
-
-engagement %>% 
-  filter(time_period=="2010-2014") %>% 
-  group_by(research_field, term) %>%
-  summarise(word_count=sum(count)) %>% 
-  top_n(20, word_count) %>%
-  ungroup %>%
-  ggplot(aes(reorder_within(term, word_count, research_field), word_count, fill = research_field)) +
-    geom_col(show.legend = FALSE) +
-    scale_x_reordered() +
-    facet_wrap(~research_field, scales = "free") +
-    coord_flip()+
-    labs(x = NULL, y="Word Counts", title = "2010-2014")
-
-engagement %>% 
-  filter(time_period=="2015 <") %>% 
-  group_by(research_field, term) %>%
-  summarise(word_count=sum(count)) %>% 
-  top_n(20, word_count) %>%
-  ungroup %>%
-  ggplot(aes(reorder_within(term, word_count, research_field), word_count, fill = research_field)) +
-    geom_col(show.legend = FALSE) +
-    scale_x_reordered() +
-    facet_wrap(~research_field, scales = "free") +
-    coord_flip()+
-    labs(x = NULL, y="Word Counts", title = "2015 <")
+for(p in periods){
+  print(engagement %>% 
+    filter(time_period==p) %>% 
+    group_by(research_field, term) %>%
+    summarise(word_count=sum(count)) %>% 
+    top_n(20, word_count) %>%
+    ungroup %>%
+    ggplot(aes(reorder_within(term, word_count, research_field), word_count, fill = research_field)) +
+      geom_col(show.legend = FALSE) +
+      scale_x_reordered() +
+      facet_wrap(~research_field, scales = "free") +
+      coord_flip()+
+      labs(x = NULL, y="Word Counts", title = p))
+}
 ```
 
 
@@ -142,16 +107,18 @@ engagement %>%
 
 ```{r}
 engagement %>% 
-  filter(year>1995) %>% 
+  filter(year>2004) %>% 
   group_by(research_field,year_derived) %>% 
   summarise(count=n_distinct(document)) %>% 
   ggplot(aes(as.numeric(year_derived), count, color=research_field)) +
-    geom_line()
+    geom_line()+
+    geom_smooth()
 ```
 
 ## Use of the term engagement in each discipline over the years
 ```{r}
 engagement %>% 
+  filter(year>2005) %>% 
   filter(term=="engag") %>% 
   group_by(research_field,year) %>%
   summarize(
@@ -160,7 +127,8 @@ engagement %>%
     ) %>%
   ungroup %>% 
   ggplot(aes(year,engag_term_count, color=research_field)) +
-    geom_line()
+    geom_line()+
+    geom_smooth()
 
 ```
 
@@ -179,6 +147,35 @@ engagement %>%
     labs(y = "Log odds ratio, weighted by uninformative Dirichlet prior",
          x = "Year")
 ```
+
+## Comparison of words used in management vs marketing from different periods 
+
+Filtered out words that appear less than 1000 times in the corpus
+
+```{r, warning=FALSE}
+library(scales)
+
+for(p in periods){
+  print(engagement %>% 
+    filter(time_period==p) %>% 
+    filter(research_field %in% c("Marketing","Management")) %>% 
+    filter(total>1000) %>% 
+    group_by(research_field, term) %>%
+    summarize(n = sum(count)) %>% 
+    mutate(proportion = n / sum(n)) %>% 
+    pivot_wider(id_cols = term, names_from = research_field, values_from = proportion) %>% 
+    ggplot(aes(x = Management, y = Marketing, color = abs(Marketing - Management))) +
+      geom_abline(color = "gray40", lty = 2) +
+      geom_jitter(alpha = 0.1, size = 2.5, width = 0.3, height = 0.3) +
+      geom_text(aes(label = term), check_overlap = TRUE, vjust = 1.5) +
+      scale_x_log10(labels = percent_format()) +
+      scale_y_log10(labels = percent_format()) +
+      scale_color_gradient(limits = c(0, 0.001), low = "darkslategray4", high = "gray75") +
+      theme(legend.position="none") +
+      labs(y = "Marketing", x = "Management", title = p))
+}
+```
+
 
 
 ## Top 10 Journals using the term "engagement"
@@ -217,73 +214,25 @@ engagement %>%
 
 ## Top 10 journal in each period by discipline
 ```{r, fig.height=6}
-engagement %>% 
-  filter(time_period=="< 2005") %>% 
-  group_by(research_field, periodical_short) %>% 
-  summarize(word_count=sum(count)) %>%
-  top_n(10,word_count) %>% 
-  ungroup %>%
-  ggplot(aes(reorder_within(periodical_short, word_count, research_field), word_count, fill = research_field)) +
-    geom_col(show.legend = FALSE) +
-    scale_x_reordered() +
-    facet_wrap(~research_field, scales = "free") +
-    coord_flip()+
-    labs(x = NULL, y=NULL, title = "< 2005")+
-    theme(
-      axis.text.y = element_text(angle = 40),
-      plot.margin = unit(c(5.5, 5.5, 50, 5.5), "points")
-    )
-    
-engagement %>% 
-  filter(time_period=="2005-2009") %>% 
-  group_by(research_field, periodical_short) %>% 
-  summarize(word_count=sum(count)) %>%
-  top_n(10,word_count) %>% 
-  ungroup %>%
-  ggplot(aes(reorder_within(periodical_short, word_count, research_field), word_count, fill = research_field)) +
-    geom_col(show.legend = FALSE) +
-    scale_x_reordered() +
-    facet_wrap(~research_field, scales = "free") +
-    coord_flip()+
-    labs(x = NULL, y=NULL, title = "2005-2009")+
-    theme(
-      axis.text.y = element_text(angle = 40),
-      plot.margin = unit(c(5.5, 5.5, 50, 5.5), "points")
-    )
-    
-engagement %>% 
-  filter(time_period=="2010-2014") %>% 
-  group_by(research_field, periodical_short) %>% 
-  summarize(word_count=sum(count)) %>%
-  top_n(10,word_count) %>% 
-  ungroup %>%
-  ggplot(aes(reorder_within(periodical_short, word_count, research_field), word_count, fill = research_field)) +
-    geom_col(show.legend = FALSE) +
-    scale_x_reordered() +
-    facet_wrap(~research_field, scales = "free") +
-    coord_flip()+
-    labs(x = NULL, y=NULL, title = "2010-2014")+
-    theme(
-      axis.text.y = element_text(angle = 40),
-      plot.margin = unit(c(5.5, 5.5, 50, 5.5), "points")
-    )
-    
-  engagement %>% 
-  filter(time_period=="2015 <") %>% 
-  group_by(research_field, periodical_short) %>% 
-  summarize(word_count=sum(count)) %>%
-  top_n(10,word_count) %>% 
-  ungroup %>%
-  ggplot(aes(reorder_within(periodical_short, word_count, research_field), word_count, fill = research_field)) +
-    geom_col(show.legend = FALSE) +
-    scale_x_reordered() +
-    facet_wrap(~research_field, scales = "free") +
-    coord_flip()+
-    labs(x = NULL, y=NULL, title = "2015 <")+
-    theme(
-      axis.text.y = element_text(angle = 40),
-      plot.margin = unit(c(5.5, 5.5, 50, 5.5), "points")
-    )
+for(p in periods){
+  print(engagement %>% 
+    filter(time_period==p) %>% 
+    group_by(research_field, periodical_short) %>% 
+    summarize(word_count=sum(count)) %>%
+    top_n(10,word_count) %>% 
+    ungroup %>%
+    ggplot(aes(reorder_within(periodical_short, word_count, research_field), word_count, fill = research_field)) +
+      geom_col(show.legend = FALSE) +
+      scale_x_reordered() +
+      facet_wrap(~research_field, scales = "free") +
+      coord_flip()+
+      labs(x = NULL, y=NULL, title = p)+
+      theme(
+        axis.text.y = element_text(angle = 40),
+        plot.margin = unit(c(5.5, 5.5, 50, 5.5), "points")
+      ))
+}    
+
 ```
 
 
@@ -293,7 +242,7 @@ engagement %>%
 engagement %>% 
   filter(term=="engag") %>%
   separate(author, c("author_1","author_2","author_3","author_4","author_5","author_6"),sep = ";") %>% 
-  gather(key = "author_num", value = "author",6:11, na.rm = TRUE) %>%
+  gather(key = "author_num", value = "author",5:10, na.rm = TRUE) %>%
   mutate(author = str_trim(author)) %>% 
   group_by(author) %>% 
   summarise(term_count=sum(count)) %>% 
@@ -311,7 +260,7 @@ engagement %>%
 engagement %>% 
   filter(term=="engag") %>%
   separate(author, c("author_1","author_2","author_3","author_4","author_5","author_6"),sep = ";") %>% 
-  gather(key = "author_num", value = "author",6:11, na.rm = TRUE) %>%
+  gather(key = "author_num", value = "author",5:10, na.rm = TRUE) %>%
   mutate(author = str_trim(author)) %>% 
   group_by(time_period, author) %>% 
   summarise(term_count=sum(count)) %>% 
@@ -328,73 +277,26 @@ engagement %>%
 
 ## that use the term engag the most my time period and discipline
 ```{r, warning=FALSE, fig.height=6}
-engagement %>% 
-  filter(term=="engag") %>%
-  filter(time_period=="< 2005") %>% 
-  separate(author, c("author_1","author_2","author_3","author_4","author_5","author_6"),sep = ";") %>% 
-  gather(key = "author_num", value = "author",6:11, na.rm = TRUE) %>%
-  mutate(author = str_trim(author)) %>% 
-  group_by(research_field, author) %>% 
-  summarise(term_count=sum(count)) %>% 
-  top_n(10,term_count) %>% 
-  ungroup %>% 
-  ggplot(aes(reorder_within(author, term_count, research_field), term_count, fill = research_field)) +
-    geom_col(show.legend = FALSE) +
-    scale_x_reordered() +
-    facet_wrap(~research_field, scales = "free") +
-    coord_flip()+
-    labs(x = NULL, y=NULL, title = "< 2005")
-
-engagement %>% 
-  filter(term=="engag") %>%
-  filter(time_period=="2005-2009") %>% 
-  separate(author, c("author_1","author_2","author_3","author_4","author_5","author_6"),sep = ";") %>% 
-  gather(key = "author_num", value = "author",6:11, na.rm = TRUE) %>%
-  mutate(author = str_trim(author)) %>% 
-  group_by(research_field, author) %>% 
-  summarise(term_count=sum(count)) %>% 
-  top_n(10,term_count) %>% 
-  ungroup %>% 
-  ggplot(aes(reorder_within(author, term_count, research_field), term_count, fill = research_field)) +
-    geom_col(show.legend = FALSE) +
-    scale_x_reordered() +
-    facet_wrap(~research_field, scales = "free") +
-    coord_flip()+
-    labs(x = NULL, y=NULL, title = "2005-2009")
-
-engagement %>% 
-  filter(term=="engag") %>%
-  filter(time_period=="2010-2014") %>% 
-  separate(author, c("author_1","author_2","author_3","author_4","author_5","author_6"),sep = ";") %>% 
-  gather(key = "author_num", value = "author",6:11, na.rm = TRUE) %>%
-  mutate(author = str_trim(author)) %>% 
-  group_by(research_field, author) %>% 
-  summarise(term_count=sum(count)) %>% 
-  top_n(10,term_count) %>% 
-  ungroup %>% 
-  ggplot(aes(reorder_within(author, term_count, research_field), term_count, fill = research_field)) +
-    geom_col(show.legend = FALSE) +
-    scale_x_reordered() +
-    facet_wrap(~research_field, scales = "free") +
-    coord_flip()+
-    labs(x = NULL, y=NULL, title = "2010-2014")
+for(p in periods){
+  print(engagement %>% 
+    filter(term=="engag") %>%
+    filter(time_period==p) %>% 
+    separate(author, c("author_1","author_2","author_3","author_4","author_5","author_6"),sep = ";") %>% 
+    gather(key = "author_num", value = "author",5:10, na.rm = TRUE) %>%
+    mutate(author = str_trim(author)) %>% 
+    group_by(research_field, author) %>% 
+    summarise(term_count=sum(count)) %>% 
+    top_n(10,term_count) %>% 
+    ungroup %>% 
+    ggplot(aes(reorder_within(author, term_count, research_field), term_count, fill = research_field)) +
+      geom_col(show.legend = FALSE) +
+      scale_x_reordered() +
+      facet_wrap(~research_field, scales = "free") +
+      coord_flip()+
+      labs(x = NULL, y=NULL, title = p))
   
-engagement %>% 
-  filter(term=="engag") %>%
-  filter(time_period=="2015 <") %>% 
-  separate(author, c("author_1","author_2","author_3","author_4","author_5","author_6"),sep = ";") %>% 
-  gather(key = "author_num", value = "author",6:11, na.rm = TRUE) %>%
-  mutate(author = str_trim(author)) %>% 
-  group_by(research_field, author) %>% 
-  summarise(term_count=sum(count)) %>% 
-  top_n(10,term_count) %>% 
-  ungroup %>% 
-  ggplot(aes(reorder_within(author, term_count, research_field), term_count, fill = research_field)) +
-    geom_col(show.legend = FALSE) +
-    scale_x_reordered() +
-    facet_wrap(~research_field, scales = "free") +
-    coord_flip()+
-    labs(x = NULL, y=NULL, title = "2015 <")
+}
+
 ```
 
 ## Top Keywords by discipline
@@ -406,6 +308,7 @@ keywords <- engagement %>%
     time_period=first(time_period),
     research_field=first(research_field)
   ) %>% 
+  mutate(keywords = tolower(keywords)) %>%  #to lower
   separate(keywords, c("k_1","k_2","k_3","k_4","k_5","k_6"),sep = ";") %>% 
   gather(key = "keyword_num", value = "keyword",2:7, na.rm = TRUE) %>%
   mutate(keyword = str_trim(keyword))
@@ -421,9 +324,6 @@ keywords %>%
     facet_wrap(~research_field, scales = "free") +
     coord_flip()+
     labs(x = NULL, y="Word Counts")
-
-
-
 ```
 
 

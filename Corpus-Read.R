@@ -1,68 +1,49 @@
-
 library(tidyverse)
 library(tidytext)
 library(pdftools) 
 library(tm)
 library(readxl)
-
-
-### Read in file names from directories
-
-dir <- "../Corpus/"
-names <- list.files(dir, pattern = "*.pdf", recursive = FALSE)
-pdfs <- paste0(dir, list.files(dir, pattern = "*.pdf", recursive = FALSE)) #adds directory to front
-
-
-# create a tibble of document names and ids
-details <- names %>%
-  str_remove(pattern = ".pdf") %>%
-  as.tibble() %>%
-  mutate(ids = as.character(seq_along(names))) %>% 
-  right_join(y=read_excel(str_c(dir,"Database.xlsx")),by=c("value"="ID NUMBER"))
-
-details 
-
-### Read the text from pdf's with pdftools package
+library(SnowballC)
 
 # Read the text from pdf's with pdftools package
-pdfs_text <- map(pdfs, pdftools::pdf_text)
+dir <- "../Corpus/"
+ids <- str_remove(list.files(dir, pattern = "*.pdf", recursive = FALSE),pattern = ".pdf")
+files <- paste0(dir, list.files(dir, pattern = "*.pdf", recursive = FALSE)) #adds directory to front
+pdfs <- map(files, pdftools::pdf_text)
 
-# Convert to document-term-matrix
-# add cleaning process
-converted <-
-  Corpus(VectorSource(pdfs_text)) %>%
-  DocumentTermMatrix(
-    control = 
-      list(removePunctuation = TRUE,
-           stopwords = TRUE,
-           tolower = TRUE,
-           stemming = TRUE,
-           removeNumbers = TRUE,
-           bounds = list(global = c(5, Inf)))) # term must exist in at least 5 documents
+## Get rid of last three paragraphs (references etc.)
+#TODO: figure out better way of determining references
+trim = 2 # number of paragraphs to trim from the end
+for(i in 1:length(pdfs)){
+  if(length(sample)>trim){
+    pdfs[[i]] <- pdfs[[i]][1:(length(pdfs[[i]])-trim)]
+  }
+  pdfs[[i]] <- paste(sample[[i]],sep = " ", collapse = "")
+}
 
-
-### Now I want to convert this to a tidy format
-#add names of documents (note that this is possible because list.files always returns files in same order)
-
-engagement <- converted %>%
-  tidy() %>%
-  arrange(desc(count)) %>% 
-  left_join(y = details, by = c("document" = "ids")) %>% 
-  filter(term != "use" & term != "can" & term!= "also") %>% # don't care about these terms
+# Create token db
+data(stop_words)
+engagement <- tibble(document=ids, text=pdfs) %>% 
+  unnest_tokens(word, text) %>% 
+  anti_join(stop_words) %>% # get rid of stop words
+  mutate(term = wordStem(word)) %>%
+  count(document, term) %>%
+  filter(!str_detect(string = term, pattern = "[0-9+]")) %>%  # get rid of numbers
+  filter(str_detect(string = term, pattern = "[a-z+]")) %>%  # get rid of numbers
+  filter(str_length(term)>3) %>%  # get rid of strings shorter than 3 characters
+  right_join(y=read_excel(str_c(dir,"Database.xlsx")),by=c("document"="ID NUMBER")) %>% 
   rename("Author"="Author, editor or organization") %>% 
   mutate(year=as.numeric(`Year derived`)) %>% 
-  filter(year < 2019)
+  filter(year < 2019) %>% 
+  rename_all(tolower) 
 
-set_names(engagement,tolower(names(engagement)))
 names(engagement)<-str_replace_all(names(engagement), c(" " = "_" , "," = "" ))
 
 engagement <- engagement %>% 
   group_by(term) %>% 
-  summarize(total=sum(count)) %>% 
-  arrange(total) %>% 
-  left_join(engagement, by=c("term"="term")) %>% 
+  summarize(total=sum(n)) %>% 
+  right_join(engagement) %>% 
   filter(total > 10) %>% # only include terms that show up more than 10 times overall
-  rename_all(tolower) %>%
   mutate(periodical_short=str_extract(periodical,"^[^\\(]+")) %>% # get rid of periodical in parentheses
   mutate(periodical_short=str_replace_all(periodical_short,"[Jj]ournal","J.")) %>% 
   mutate(periodical_short=str_replace_all(periodical_short,"[Ii]nternational","Int.")) %>% 
@@ -87,5 +68,6 @@ engagement <- engagement %>%
       research_field=="Public Management Research" ~ "Public"
     )
   ) %>% 
+  rename("count"="n") %>% 
   write_rds(path = "engagement.rds")
 
