@@ -1,22 +1,19 @@
 ---
 title: "Corpus-Relationships"
-output: html_document
+output:
+  html_document: 
+    fig_width: 10.5
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE)
 library(tidyverse)
 library(tidytext)
-library(igraph)
-library(ggraph)
-
-count_bigrams <- function(dataset) {
-  dataset %>%
-    unnest_tokens(bigram, text, token = "ngrams", n = 2) %>%
-    separate(bigram, c("word1", "word2"), sep = " ") %>%
-    filter(!word1 %in% stop_words$word,
-           !word2 %in% stop_words$word) %>%
-    count(word1, word2, sort = TRUE)
-}
+library(tidylo)
+library(wordcloud)
+engagement <- read_rds("terms.rds") %>% 
+  left_join(read_rds("articles.rds")) %>% 
+  filter(year < 2019)
+periods <- c("< 2005","2005-2009","2010-2014","2015 <")
+disciplines <- c("Marketing","Management","Tourism","Public")
 ```
-

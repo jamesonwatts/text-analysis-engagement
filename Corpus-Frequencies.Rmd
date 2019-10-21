@@ -11,7 +11,9 @@ library(tidyverse)
 library(tidytext)
 library(tidylo)
 library(wordcloud)
-engagement <- read_rds("engagement.rds") 
+engagement <- read_rds("terms.rds") %>% 
+  left_join(read_rds("articles.rds")) %>% 
+  filter(year < 2019)
 periods <- c("< 2005","2005-2009","2010-2014","2015 <")
 disciplines <- c("Marketing","Management","Tourism","Public")
 ```
