@@ -8,10 +8,13 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(tidytext)
-engagement <- read_rds("engagement.rds") %>% 
-  filter(year < 2019) %>% 
-  mutate(year=as.numeric(year)) %>% 
-  drop_na()
+eng <- read_rds("terms.rds") %>% 
+  left_join(read_rds("articles.rds")) %>% 
+  filter(year < 2019) 
+periods <- c("< 2005","2005-2009","2010-2014","2015 <")
+disciplines <- c("Marketing","Management","Tourism","Public")
+
+Sys.setenv(GITHUB_PAT = "afc456389e4e0315f0bacd5149712afe92f50ef9")
 ```
 
 
@@ -19,9 +22,9 @@ engagement <- read_rds("engagement.rds") %>%
 ```{r}
 library(topicmodels)
 
-dtm_text <- engagement %>% 
-  count(document, term) %>% 
-  cast_dtm(document, term, n)
+dtm_text <- eng %>%
+  filter(research_field=="Marketing") %>% 
+  cast_dtm(document, term, count)
 
 lda_out <- dtm_text %>% 
   LDA(
@@ -53,4 +56,27 @@ lda_topics %>%
 
 ```
 
+## Visualize topics
+
+```{r}
+library(gistr)
+library(LDAvis)
+doc_length <- eng %>%
+  filter(research_field=="Marketing") %>% 
+  count(document)
+
+term_freq <- eng %>%
+  filter(research_field=="Marketing") %>% 
+  count(term)
+
+json <- createJSON(
+  phi = posterior(lda_out)$terms %>% as.matrix,
+  theta = posterior(lda_out)$topics %>% as.matrix,
+  vocab <- colnames(posterior(lda_out)$terms %>% as.matrix),
+  doc.length = doc_length$n,
+  term.frequency = term_freq$n
+  )
+
+serVis(json, as.gist = T, description="Engagement Marketing - All Periods", browse=T)
+```
 
