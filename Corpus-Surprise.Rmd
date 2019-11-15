@@ -120,7 +120,7 @@ delta_den %>%
 
 
 
-## Now let's isolate the documents that use the growth terms the most in 2004 (
+## Now let's isolate the documents that use the growth terms the most in 2004 
 Note there are only 5 articles from that year, which may be driving the results.
 
 ```{r}

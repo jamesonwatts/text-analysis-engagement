@@ -6,6 +6,7 @@ library(readxl)
 library(SnowballC)
 
 # Read in the excel database and clean it up
+dir <- "../Corpus/"
 dbx <- as_tibble(read_excel(str_c(dir,"Database.xlsx")))
 names(dbx)<-str_replace_all(names(dbx), c(" " = "_" , "," = "" ))
 dbx <- dbx %>% 
@@ -40,7 +41,6 @@ dbx <- dbx %>%
   write_rds(path = "articles.rds")
 
 # Read the text from pdf's with pdftools package
-dir <- "../Corpus/"
 ids <- str_remove(list.files(dir, pattern = "*.pdf", recursive = FALSE),pattern = ".pdf")
 files <- paste0(dir, list.files(dir, pattern = "*.pdf", recursive = FALSE)) #adds directory to front
 pdfs <- map(files, pdftools::pdf_text)
@@ -52,6 +52,18 @@ for(i in 1:length(pdfs)){
     pdfs[[i]] <- pdfs[[i]][1:(length(pdfs[[i]])-trim)]
   }
   pdfs[[i]] <- paste(pdfs[[i]],sep = " ", collapse = "")
+}
+
+# Create text db
+txt <- tibble(document=ids, text=pdfs) %>% 
+  mutate(text=as.character(text)) %>% 
+  mutate(text = str_replace_all(text,"[\n\t\r\v\f]"," ")) %>% 
+  mutate(text = str_replace_all(text,"\\s+"," "))
+
+for(i in 1:nrow(txt)){
+  fileConn<-file(str_c("../Corpus_txt/",txt[i,'document'],".txt"))
+  writeLines(as.character(txt[i,'text']), fileConn)
+  close(fileConn)
 }
 
 # Create token db
@@ -87,10 +99,12 @@ engagement_bi <- tibble(document=ids, text=pdfs) %>%
   group_by(bigram) %>% 
   mutate(total=sum(count)) %>% 
   ungroup() %>% 
-  filter(total > 5) %>% # only include bigrams that show up more than 10 times overall
+  filter(total > 5) %>% # only include bigrams that show up more than 5 times overall
   separate(bigram, c("word1", "word2"), sep = " ") %>% 
   filter(!word1 %in% stop_words$word) %>%
   filter(!word2 %in% stop_words$word) %>% 
+  filter(str_length(word1)>3) %>%  # get rid of strings shorter than 3 characters
+  filter(str_length(word2)>3) %>%  # get rid of strings shorter than 3 characters
   mutate(word1 = wordStem(word1)) %>%
   mutate(word2 = wordStem(word2)) %>% 
   write_rds(path = "bigrams.rds")

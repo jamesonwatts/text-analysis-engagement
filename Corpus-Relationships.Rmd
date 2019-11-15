@@ -6,14 +6,244 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 library(tidyverse)
 library(tidytext)
 library(tidylo)
-library(wordcloud)
-engagement <- read_rds("terms.rds") %>% 
+#library(ggraph)
+#library(igraph)
+set.seed(2019)
+eng <- read_rds("bigrams.rds") %>% 
   left_join(read_rds("articles.rds")) %>% 
-  filter(year < 2019)
+  filter(year < 2019) %>% 
+  mutate(bigram = str_c(word1," ",word2))
 periods <- c("< 2005","2005-2009","2010-2014","2015 <")
 disciplines <- c("Marketing","Management","Tourism","Public")
 ```
+
+# Bigrams
+
+## Most common companions to the term engagement
+
+Bigrams with 'engag' before or after the term
+
+```{r}
+eng %>% 
+  filter(str_detect(bigram,"engag")) %>% 
+  group_by(bigram) %>% 
+  summarize(total=sum(count)) %>% 
+  top_n(25,total) %>% 
+  ggplot(aes(reorder(bigram,total), total)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+  
+```
+
+## Common bigrams by period
+```{r}
+eng %>% 
+  group_by(time_period, bigram) %>%
+  summarise(total=sum(count)) %>% 
+  top_n(20, total) %>%
+  ungroup %>%
+  ggplot(aes(reorder_within(bigram, total, time_period), total, fill = time_period)) +
+    geom_col(show.legend = FALSE) +
+    scale_x_reordered() +
+    facet_wrap(~time_period, scales = "free") +
+    coord_flip()+
+    labs(x = NULL, y="Word Counts")
+```
+
+## Common bigrams by discipline
+```{r}
+eng %>% 
+  group_by(research_field, bigram) %>%
+  summarise(total=sum(count)) %>% 
+  top_n(20, total) %>%
+  ungroup %>%
+  ggplot(aes(reorder_within(bigram, total, research_field), total, fill = research_field)) +
+    geom_col(show.legend = FALSE) +
+    scale_x_reordered() +
+    facet_wrap(~research_field, scales = "free") +
+    coord_flip()+
+    labs(x = NULL, y="Word Counts")
+```
+
+## Common bigrams by discipline limited to the term 'engag'
+
+```{r}
+eng %>% 
+  filter(str_detect(bigram,"engag")) %>% 
+  group_by(research_field, bigram) %>%
+  summarise(total=sum(count)) %>% 
+  top_n(20, total) %>%
+  ungroup %>%
+  ggplot(aes(reorder_within(bigram, total, research_field), total, fill = research_field)) +
+    geom_col(show.legend = FALSE) +
+    scale_x_reordered() +
+    facet_wrap(~research_field, scales = "free") +
+    coord_flip()+
+    labs(x = NULL, y="Word Counts")
+```
+
+
+# Networks
+
+## Most central terms in a network constructed using bigram relationships
+
+```{r}
+cent <- eng %>%
+  count(word1,word2) %>% 
+  graph_from_data_frame() %>% 
+  eigen_centrality() 
+
+tibble(word=names(cent[[1]]),centrality=cent[[1]]) %>% 
+  top_n(25,centrality) %>% 
+  ggplot(aes(reorder(word,centrality), centrality)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+```
+
+
+## Most central terms by period
+
+```{r}
+ct=tibble()
+for(p in periods){
+  cent <- eng %>%
+    filter(time_period==p) %>% 
+    count(word1,word2) %>% 
+    graph_from_data_frame() %>% 
+    eigen_centrality() 
+  
+  ct <- bind_rows(ct,tibble(word=names(cent[[1]]),centrality=cent[[1]],period=p))
+} 
+
+print( 
+  ct %>% 
+    group_by(period) %>% 
+    top_n(20,centrality) %>% 
+    ggplot(aes(reorder_within(word, centrality, period), centrality, fill = period)) +
+      geom_col(show.legend = FALSE) +
+      scale_x_reordered() +
+      facet_wrap(~period, scales = "free") +
+      coord_flip()+
+      labs(x = NULL, y="Centrality", title = p)
+)
+
+```
+
+## Most central terms by discipline over time
+```{r}
+for(p in periods){
+  ct <- tibble()
+  for(d in disciplines){
+    cent <- eng %>%
+      filter(time_period==p) %>%
+      filter(research_field==d) %>% 
+      count(word1,word2) %>% 
+      graph_from_data_frame() %>% 
+      eigen_centrality() 
+    
+    ct <- bind_rows(ct,tibble(word=names(cent[[1]]),centrality=cent[[1]],discipline=d))
+  }
+  
+  print(
+    ct %>%
+      group_by(discipline) %>% 
+      top_n(20,centrality) %>%
+      ggplot(aes(reorder_within(word, centrality, discipline), centrality, fill = discipline)) +
+      geom_col(show.legend = FALSE) +
+      scale_x_reordered() +
+      facet_wrap(~discipline, scales = "free") +
+      coord_flip()+
+      labs(x = NULL, y="Centrality", title = p)
+    )
+}
+```
+
+# Colocation
+
+## Pairs with the higest pairwise correlations to the term engag
+
+...and appear more than 1000 times (individually) in the corpus
+
+```{r}
+library(widyr)
+eng <- read_rds("terms.rds") %>% 
+  left_join(read_rds("articles.rds")) %>% 
+  filter(year < 2019)
+
+eng %>% 
+  filter(total > 1000) %>% 
+  pairwise_cor(term, document, sort=TRUE) %>% 
+  filter(item1=="engag") %>% 
+  top_n(25,correlation) %>% 
+  ggplot(aes(reorder(item2,correlation),correlation))+
+    geom_col()+
+    coord_flip()+
+    labs(x = NULL, y="Pairwise Correlation")
+```
+
+## Pairs with the higest pairwise correlations to the term engag in each discipline
+
+...and appear more than 1000 times (individually) in the corpus
+
+```{r}
+cors <- tibble()
+for(d in disciplines){
+  tmp <- eng %>% 
+    filter(research_field==d) %>% 
+    filter(total>1000) %>% 
+    top_frac(.10,count) %>%
+    pairwise_cor(term, document, sort=TRUE) %>% 
+    filter(item1=="engag")
+  
+  cors <- bind_rows(cors,tibble(item1=tmp$item1,item2=tmp$item2,correlation=tmp$correlation,discipline=d))
+}
+  
+
+cors %>%
+  group_by(discipline) %>% 
+  top_n(20,correlation) %>%
+  ggplot(aes(reorder_within(item2, correlation, discipline), correlation, fill = discipline)) +
+  geom_col(show.legend = FALSE) +
+  scale_x_reordered() +
+  facet_wrap(~discipline, scales = "free") +
+  coord_flip()+
+  labs(x = NULL, y="Correlation")
+    
+```
+
+## Pairs with the higest pairwise correlations to the term engag in each discipline over time
+
+```{r}
+
+for(p in periods){
+  cors <- tibble()
+  for(d in c("Marketing","Management")){
+    tmp <- eng %>% 
+      filter(research_field==d) %>% 
+      filter(time_period==p) %>% 
+      top_frac(.05,count) %>%
+      pairwise_cor(term, document, sort=TRUE) %>% 
+      filter(item1=="engag")
+    
+    cors <- bind_rows(cors,tibble(item1=tmp$item1,item2=tmp$item2,correlation=tmp$correlation,discipline=d))
+  }
+    
+  print(cors %>%
+    group_by(discipline) %>% 
+    top_n(20,correlation) %>%
+    ggplot(aes(reorder_within(item2, correlation, discipline), correlation, fill = discipline)) +
+    geom_col(show.legend = FALSE) +
+    scale_x_reordered() +
+    facet_wrap(~discipline, scales = "free") +
+    coord_flip()+
+    labs(x = NULL, y="Correlation", title = p))
+    
+}
+```
+
